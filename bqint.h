@@ -300,7 +300,8 @@ static void bqint__set_raw_u32(bqint *a, uint32_t val)
 
 #if BQINT_WORD_BITS == 32
 	size = 1;
-	words[0] = val;
+	if (cap > 0)
+		words[0] = val;
 #elif BQINT_WORD_BITS == 16
 	if (val & 0xFFFF0000) {
 		size = 2;
