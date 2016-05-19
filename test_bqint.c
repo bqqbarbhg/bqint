@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("%llu/%llu (%llu fails)", (lluint)(num_asserts - num_failed), (lluint)num_asserts, (lluint)num_failed);
+	printf("%llu/%llu (%llu fails)\n", (lluint)(num_asserts - num_failed), (lluint)num_asserts, (lluint)num_failed);
 
 	return 0;
 }
