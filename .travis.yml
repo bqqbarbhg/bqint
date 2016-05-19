@@ -6,6 +6,9 @@ script:
   - gcc -o bin/test_bqint8 -DBQINT_WORD_BITS=8 test_bqint.c
   - gcc -o bin/test_bqint16 -DBQINT_WORD_BITS=16 test_bqint.c
   - gcc -o bin/test_bqint32 -DBQINT_WORD_BITS=32 test_bqint.c
+  - gcc -o bin/test_bqint_cpp8 -std=gnu++98 -DBQINT_WORD_BITS=8 test_bqint.cpp
+  - gcc -o bin/test_bqint_cpp16 -std=gnu++98 -DBQINT_WORD_BITS=16 test_bqint.cpp
+  - gcc -o bin/test_bqint_cpp32 -std=gnu++98 -DBQINT_WORD_BITS=32 test_bqint.cpp
   - bin/test_bqint8 bin/fixtures.bin
   - bin/test_bqint16 bin/fixtures.bin
   - bin/test_bqint32 bin/fixtures.bin
