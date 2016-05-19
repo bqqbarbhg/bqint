@@ -562,29 +562,4 @@ int bqint_cmp(bqint *a, bqint *b)
 	return 0;
 }
 
-#if 0
-static bqint_word bqint__digit(char c)
-{
-	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'A' && c <= 'Z') return c - 'A';
-	if (c >= 'a' && c <= 'z') return c - 'z';
-	return ~(bqint_word)0;
-}
-
-const char *bqint_parse_string(bqint *a, const char *str, int base)
-{
-	bqint_word base_word = (bqint_word)base;
-	const char *ch, c;
-
-	for (ch = str; c = *ch; ch++) {
-		bqint_word digit = bqint__digit(c);
-		if (digit >= base_word)
-			return ch;
-		bqint_mul_in_word_carry(&a, base_word, digit);
-	}
-
-	return 0;
-}
-#endif
-
 #endif
