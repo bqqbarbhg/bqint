@@ -2,6 +2,7 @@
 // -- Types
 
 #include <stdint.h>
+#include <stddef.h>
 
 // Operations are done on double words, so default to 32-bit words only
 // on 64-bit context. Otherwise use 32-bit operations (16-bit words).
