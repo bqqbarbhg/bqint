@@ -169,6 +169,14 @@ static inline bqint_word *bqint_get_words(bqint *a)
 // returns: NULL on success, pointer to first invalid char if failed
 const char *bqint_parse_string(bqint *a, const char *str, int base);
 
+// -- Allocators
+
+typedef void*(*bqint_alloc_fn)(size_t);
+typedef void(*bqint_free_fn)(void*);
+
+// Set global allocators for bqint functions
+void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn);
+
 #ifdef BQINT_IMPLEMENTATION
 
 #include <string.h>
@@ -177,14 +185,31 @@ const char *bqint_parse_string(bqint *a, const char *str, int base);
 #define BQINT__HI(dw) ((dw) >> BQINT_WORD_BITS)
 #define BQINT__LO(dw) ((dw) & (((bqint_dword)1 << BQINT_WORD_BITS) - 1))
 
-void *bqint_alloc_memory(size_t size)
+#define BQINT__BYTESWAP_32(w) ((w) << 24 | ((w) & 0x0000FF00U) << 8 \
+		| ((w) & 0x00FF0000U) >> 8 | ((w) >> 24))
+#define BQINT__BYTESWAP_16(w) ((w) << 8 | (w) >> 8)
+
+#if BQINT_WORD_BITS == 32
+#define BQINT__BYTESWAP_WORD(w) BQINT__BYTESWAP_32(w)
+#elif BQINT_WORD_BITS == 16
+#define BQINT__BYTESWAP_WORD(w) BQINT__BYTESWAP_16(w)
+#elif BQINT_WORD_BITS == 8
+#define BQINT__BYTESWAP_WORD(w) (w)
+#endif
+
+static bqint_alloc_fn bqint_alloc_memory = malloc;
+static bqint_free_fn bqint_free_memory = free;
+
+void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn)
 {
-	return malloc(size);
+	bqint_alloc_memory = alloc_fn;
+	bqint_free_memory = free_fn;
 }
 
-void bqint_free_memory(void *ptr)
+static int bqint__is_big_endian()
 {
-	free(ptr);
+	uint32_t one = 1;
+	return *(unsigned char*)&one != 1;
 }
 
 bqint bqint_dynamic()
@@ -382,6 +407,13 @@ void bqint_set_raw(bqint *a, const void *data, size_t size)
 		words[sz - 1] = (bqint_word)0;
 	}
 	memcpy(words, data, size_to_copy);
+
+	if (bqint__is_big_endian()) {
+		bqint_size i;
+		for (i = 0; i < sz; i++) {
+			words[i] = BQINT__BYTESWAP_WORD(words[i]);
+		}
+	}
 
 	// If we copied less than the requested mark the value truncated
 	if (size_to_copy < size) {

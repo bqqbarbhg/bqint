@@ -73,6 +73,41 @@ void test_assert_equal(bqint *val, bqint *ref, const char *name)
 	test_assert(cmp == 0, "%s equal to reference (%s)", name, cmp_descs[cmp + 1]);
 }
 
+struct bqtest_alloc_hdr
+{
+	struct bqtest_alloc_hdr *prev, *next;
+	uint64_t size;
+};
+
+struct bqtest_alloc_hdr alloc_head;
+
+void *bqtest_alloc(size_t size)
+{
+	struct bqtest_alloc_hdr *hdr = (struct bqtest_alloc_hdr*)malloc(
+			size + sizeof(struct bqtest_alloc_hdr));
+
+	if (alloc_head.prev)
+		alloc_head.prev->next = hdr;
+	hdr->prev = alloc_head.prev;
+	hdr->next = &alloc_head;
+	hdr->size = (uint64_t)size;
+
+	alloc_head.prev = hdr;
+
+	return hdr + 1;
+}
+
+void bqtest_free(void *mem)
+{
+	struct bqtest_alloc_hdr *hdr = (struct bqtest_alloc_hdr*)mem;
+	hdr--;
+
+	if (hdr->prev) hdr->prev->next = hdr->next;
+	if (hdr->next) hdr->next->prev = hdr->prev;
+
+	free(hdr);
+}
+
 int main(int argc, char **argv)
 {
 	char *fixture_data;
@@ -80,6 +115,8 @@ int main(int argc, char **argv)
 
 	printf("Running bqint tests...\n");
 	printf("  BQINT_WORD_BITS=%d\n", BQINT_WORD_BITS);
+
+	bqint_set_allocators(bqtest_alloc, bqtest_free);
 
 	{
 		FILE *fixture_file = fopen(argv[1], "rb");
@@ -133,11 +170,33 @@ int main(int argc, char **argv)
 				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
 				test_assert_ok(&sum, "Sum result");
 				test_assert_equal(&sum, &results[0], "Sum result");
+
+				bqint_free(&sum);
 			}
+		}
+
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			bqint_free(&fixtures[fixi]);
+		}
+
+		for (fixi = 0; fixi < num_fixtures*num_fixtures*num_binops; fixi++) {
+			bqint_free(&binop_res[fixi]);
 		}
 	}
 
 	printf("%llu/%llu (%llu fails)\n", (lluint)(num_asserts - num_failed), (lluint)num_asserts, (lluint)num_failed);
+
+	{
+		uint64_t leaked_num = 0, leaked_amount = 0;
+		struct bqtest_alloc_hdr *hdr = alloc_head.prev;
+		while (hdr) {
+			leaked_num++;
+			leaked_amount += hdr->size;
+			hdr = hdr->prev;
+		}
+
+		printf("Leaked %llu allocations (%llu bytes)\n", (lluint)leaked_num, (lluint)leaked_amount);
+	}
 
 	return 0;
 }
