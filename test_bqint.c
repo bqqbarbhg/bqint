@@ -37,7 +37,7 @@ void test_assert(int val, const char *desc, ...)
 {
 	if (!val) {
 		va_list args;
-		fprintf(stderr, "%llu: ", (lluint)num_asserts);
+		fprintf(stderr, "Assert %llu failed: ", (lluint)num_asserts);
 		va_start (args, desc);
 		vfprintf(stderr, desc, args);
 		va_end(args);
@@ -59,6 +59,18 @@ void test_assert_ok(bqint *val, const char *name)
 	if (val->flags & BQINT_DIV_BY_ZERO) fs += sprintf(fs, "x/0 ");
 
 	test_assert(bqint_ok(val), "%s OK [%s]", name, flagstr);
+}
+
+const char *cmp_descs[] = {
+	"value < ref",
+	"value = ref",
+	"value > ref",
+};
+
+void test_assert_equal(bqint *val, bqint *ref, const char *name)
+{
+	int cmp = bqint_cmp(val, ref);
+	test_assert(cmp == 0, "%s equal to reference (%s)", name, cmp_descs[cmp + 1]);
 }
 
 int main(int argc, char **argv)
@@ -107,6 +119,17 @@ int main(int argc, char **argv)
 				int cmpref = c == '=' ? 0 : (c == '<' ? -1 : 1);
 				int cmp = bqint_cmp(&fixtures[fixi], &fixtures[fixj]);
 				test_assert(cmp == cmpref, "bqint_cmp(%u, %u)", fixi, fixj);
+			}
+		}
+
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			for (fixj = 0; fixj < num_fixtures; fixj++) {
+				bqint *results = binop_res + ((fixi * num_fixtures) + fixj) * num_binops;
+				bqint sum = { 0 };
+
+				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
+				test_assert_ok(&sum, "Sum result");
+				test_assert_equal(&sum, &results[0], "Sum result");
 			}
 		}
 	}

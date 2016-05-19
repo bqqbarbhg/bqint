@@ -124,6 +124,11 @@ void bqint_set_i32(bqint *a, int32_t val);
 // size: Length of the number in bytes
 void bqint_set_raw(bqint *a, const void *data, size_t size);
 
+// -- Arithmetic
+
+// Add bqints a and b and store the value in result
+void bqint_add(bqint *result, bqint *a, bqint *b);
+
 // -- Compares
 
 // Compare bqints, positive if a > b, negative if a < b, zero if equal
@@ -168,6 +173,9 @@ const char *bqint_parse_string(bqint *a, const char *str, int base);
 
 #include <string.h>
 #include <stdlib.h>
+
+#define BQINT__HI(dw) ((dw) >> BQINT_WORD_BITS)
+#define BQINT__LO(dw) ((dw) & (((bqint_dword)1 << BQINT_WORD_BITS) - 1))
 
 void *bqint_alloc_memory(size_t size)
 {
@@ -400,6 +408,100 @@ void bqint_set_raw(bqint *a, const void *data, size_t size)
 	}
 
 	a->size = sz;
+}
+
+bqint_size bqint__add_words(
+		bqint_word *r_words, bqint_size r_size,
+		bqint_word *a_words, bqint_size a_size,
+		bqint_word *b_words, bqint_size b_size,
+		bqint_word initial_carry)
+{
+	int truncated = 0;
+	bqint_word *long_words, *short_words;
+	bqint_size long_size, short_size;
+	bqint_size pos;
+	bqint_word carry;
+
+	// Sort the inputs to short and long
+	if (a_size > b_size) {
+		long_words = a_words;
+		long_size = a_size;
+		short_words = b_words;
+		short_size = b_size;
+	} else {
+		long_words = b_words;
+		long_size = b_size;
+		short_words = a_words;
+		short_size = a_size;
+	}
+
+	// If the long value does not fit in the result truncate
+	if (long_size > r_size) {
+		truncated = 1;
+		long_size = r_size;
+
+		// Note: long_size >= short_size > r_size, so this can be contained
+		// in this if statement safely
+		if (short_size > r_size) {
+			short_size = r_size;
+		}
+	}
+
+	// 1. Add the words together for the duration of the short number
+	carry = initial_carry;
+	for (pos = 0; pos < short_size; pos++) {
+		bqint_dword sum
+			= (bqint_dword)short_words[pos]
+			+ (bqint_dword)long_words[pos]
+			+ (bqint_dword)carry;
+
+		r_words[pos] = BQINT__LO(sum);
+		carry = BQINT__HI(sum);
+	}
+
+	// 2. Keep adding carry as long as it's present
+	for (; pos < long_size && carry; pos++) {
+		bqint_dword sum
+			= (bqint_dword)long_words[pos]
+			+ (bqint_dword)carry;
+
+		r_words[pos] = BQINT__LO(sum);
+		carry = BQINT__HI(sum);
+	}
+
+	// 3. Copy the rest of the long words (if any)
+	for (; pos < long_size; pos++) {
+		r_words[pos] = long_words[pos];
+	}
+
+	// 4. Overflow the carry to the next word (check truncation)
+	if (carry) {
+		if (pos < r_size)
+			r_words[pos] = carry;
+		pos++;
+	}
+
+	// Note: Return ~0 if we truncated indicating the algorithm didn't calculate
+	// the correct length of the number.
+	return truncated ? ~(bqint_size)0 : pos;
+}
+
+void bqint_add(bqint *result, bqint *a, bqint *b)
+{
+	// TODO: Signs
+	bqint_size res_size = (a->size > b->size ? a->size : b->size) + 1;
+	bqint_word *res_words = bqint__reserve(result, &res_size);
+	bqint_size size;
+
+	size = bqint__add_words(
+			res_words, res_size,
+			bqint_get_words(a), a->size,
+			bqint_get_words(b), b->size,
+			0);
+
+	// Propagate error flags
+	result->flags |= (a->flags | b->flags) & BQINT_ERROR;
+	bqint__truncate(result, size);
 }
 
 int bqint_cmp(bqint *a, bqint *b)
