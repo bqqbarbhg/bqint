@@ -78,6 +78,9 @@ int main(int argc, char **argv)
 	char *fixture_data;
 	size_t fixture_data_size;
 
+	printf("Running bqint tests...\n");
+	printf("  BQINT_WORD_BITS=%d\n", BQINT_WORD_BITS);
+
 	{
 		FILE *fixture_file = fopen(argv[1], "rb");
 		fseek(fixture_file, 0, SEEK_END);

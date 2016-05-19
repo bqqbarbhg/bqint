@@ -4,7 +4,11 @@ before_script:
   - chmod +x make_fixtures.py
 script:
   - ./make_fixtures.py
-  - gcc -o bin/test_bqint test_bqint.c
-  - bin/test_bqint bin/fixtures.bin
+  - gcc -o bin/test_bqint8 -DBQINT_WORD_BITS=8 test_bqint.c
+  - gcc -o bin/test_bqint16 -DBQINT_WORD_BITS=16 test_bqint.c
+  - gcc -o bin/test_bqint32 -DBQINT_WORD_BITS=32 test_bqint.c
+  - bin/test_bqint8 bin/fixtures.bin
+  - bin/test_bqint16 bin/fixtures.bin
+  - bin/test_bqint32 bin/fixtures.bin
 notifications:
   email: false
