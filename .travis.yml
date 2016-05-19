@@ -1,6 +1,8 @@
 language: c++
-script:
+before_script:
   - mkdir -p bin
+  - chmod +x make_fixtures.py
+script:
   - ./make_fixtures.py
   - gcc -o bin/test_bqint test_bqint.c
   - bin/test_bqint bin/fixtures.bin
