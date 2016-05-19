@@ -1,7 +1,6 @@
 language: c++
 before_script:
   - mkdir -p bin
-  - chmod +x make_fixtures.py
 script:
   - ./make_fixtures.py
   - gcc -o bin/test_bqint8 -DBQINT_WORD_BITS=8 test_bqint.c
