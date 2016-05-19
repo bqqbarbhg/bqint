@@ -31,11 +31,13 @@ uint64_t num_failed = 0;
 
 #define BREAK_ASSERT_NUM 0
 
+typedef long long unsigned lluint;
+
 void test_assert(int val, const char *desc, ...)
 {
 	if (!val) {
 		va_list args;
-		fprintf(stderr, "%llu: ", num_asserts);
+		fprintf(stderr, "%llu: ", (lluint)num_asserts);
 		va_start (args, desc);
 		vfprintf(stderr, desc, args);
 		va_end(args);
@@ -109,7 +111,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("%llu/%llu (%llu fails)", num_asserts - num_failed, num_asserts, num_failed);
+	printf("%llu/%llu (%llu fails)", (lluint)(num_asserts - num_failed), (lluint)num_asserts, (lluint)num_failed);
 
 	return 0;
 }
