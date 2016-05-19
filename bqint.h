@@ -61,7 +61,7 @@ enum
 	BQINT_ALLOCATED = 1 << 2,
 	BQINT_DYNAMIC = 1 << 3,
 	BQINT_INLINED = 1 << 4,
-	BQINT_TRUNCATED = 1 << 4,
+	BQINT_TRUNCATED = 1 << 5,
 
 	BQINT_OUT_OF_MEMORY = 1 << 9,
 	BQINT_DIV_BY_ZERO = 1 << 11,
@@ -121,7 +121,7 @@ void bqint_set_i32(bqint *a, int32_t val);
 // Set bqint to a raw value
 // data: Pointer to little-endian number data
 // size: Length of the number in bytes
-void bqint_set_raw(bqint *a, void *data, size_t size);
+void bqint_set_raw(bqint *a, const void *data, size_t size);
 
 // -- Compares
 
@@ -249,7 +249,7 @@ static bqint_word *bqint__reserve(bqint *a, bqint_size* size)
 	}
 
 	// Dynamically allocated (implicit or explicit)
-#ifndef BQINT_NO_IMPLICIT_DYNAMIC
+#ifdef BQINT_NO_IMPLICIT_DYNAMIC
 	if ((flags & BQINT_DYNAMIC))
 #endif
 	{
@@ -265,6 +265,7 @@ static bqint_word *bqint__reserve(bqint *a, bqint_size* size)
 
 		a->flags &= ~BQINT_INLINED;
 		a->flags |= BQINT_ALLOCATED;
+		return a->data.words;
 	}
 
 	// No implicit dynamic, just truncate to inline storage
@@ -349,7 +350,7 @@ void bqint_set_i32(bqint *a, int32_t val)
 	}
 }
 
-void bqint_set_raw(bqint *a, void *data, size_t size)
+void bqint_set_raw(bqint *a, const void *data, size_t size)
 {
 	size_t rounded_size, num_words, size_to_copy;
 	bqint_size sz;
@@ -393,7 +394,7 @@ void bqint_set_raw(bqint *a, void *data, size_t size)
 	}
 
 	// Remove high zeroes
-	while (sz > 0 && !words[sz]) {
+	while (sz > 0 && !words[sz - 1]) {
 		sz--;
 	}
 
@@ -422,13 +423,13 @@ int bqint_cmp(bqint *a, bqint *b)
 
 	// Equal signs: Compare sizes
 	size = a->size;
-	if (size != a->size)
+	if (size != b->size)
 		return size > b->size ? sign : -sign;
 
 	// Equal sizes: Compare data
 	aws = bqint_get_words(a);
 	bws = bqint_get_words(b);
-	for (i = 0; i < size; i++) {
+	for (i = size - 1; i < size; i--) {
 		bqint_word aw = aws[i], bw = bws[i];
 
 		if (aw != bw)

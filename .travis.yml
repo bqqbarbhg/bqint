@@ -1,0 +1,8 @@
+language: c++
+script:
+  - mkdir -p bin
+  - ./make_fixtures.py
+  - gcc -o bin/test_bqint test_bqint.c
+  - bin/test_bqint bin/fixtures.bin
+notifications:
+  email: false
