@@ -43,7 +43,7 @@ void test_assert(int val, const char *desc, ...)
 		num_failed++;
 	}
 	num_asserts++;
-#ifdef BREAK_ASSERT_NUM > 0
+#if BREAK_ASSERT_NUM > 0
 	if (num_asserts == BREAK_ASSERT_NUM)
 		__debugbreak();
 #endif
