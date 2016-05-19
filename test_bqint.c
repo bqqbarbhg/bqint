@@ -110,6 +110,7 @@ void bqtest_free(void *mem)
 
 int main(int argc, char **argv)
 {
+	int status = 0;
 	char *fixture_data;
 	size_t fixture_data_size;
 
@@ -186,6 +187,9 @@ int main(int argc, char **argv)
 
 	printf("%llu/%llu (%llu fails)\n", (lluint)(num_asserts - num_failed), (lluint)num_asserts, (lluint)num_failed);
 
+	if (num_failed > 0)
+		status |= 1;
+
 	{
 		uint64_t leaked_num = 0, leaked_amount = 0;
 		struct bqtest_alloc_hdr *hdr = alloc_head.prev;
@@ -196,8 +200,11 @@ int main(int argc, char **argv)
 		}
 
 		printf("Leaked %llu allocations (%llu bytes)\n", (lluint)leaked_num, (lluint)leaked_amount);
+
+		if (leaked_amount > 0)
+			status |= 2;
 	}
 
-	return 0;
+	return status;
 }
 
