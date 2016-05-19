@@ -361,24 +361,11 @@ void bqint_set_i32(bqint *a, int32_t val)
 
 void bqint_set_raw(bqint *a, const void *data, size_t size)
 {
-	size_t rounded_size, num_words, size_to_copy;
+	size_t num_words, size_to_copy;
 	bqint_size sz;
 	bqint_word *words;
 
-	rounded_size = size + sizeof(bqint_word) - 1;
-	if (rounded_size >= size) {
-		num_words = rounded_size / sizeof(bqint_word);
-	} else {
-		// This should happen only if rounded_size wraps, which means size
-		// is in [size_t_max - sizeof(bqint_word), size_t_max], which requires
-		// rounding up, so round after division. In case of 8-bit words don't
-		// round because it might also wrap.
-#if BQINT_WORD_BITS == 8
-		num_words = size;
-#else
-		num_words = size / sizeof(bqint_word) + 1;
-#endif
-	}
+	num_words = (size + sizeof(bqint_word) - 1) / sizeof(bqint_word);
 
 	// Clamp to representable size
 	if (num_words > BQINT_MAX_WORDS) {
