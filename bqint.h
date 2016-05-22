@@ -573,8 +573,7 @@ void bqint_set_raw(bqint *a, const void *data, size_t size)
 bqint_size bqint__add_words(
 		bqint_word *r_words, bqint_size r_size,
 		bqint_word *a_words, bqint_size a_size,
-		bqint_word *b_words, bqint_size b_size,
-		bqint_word initial_carry)
+		bqint_word *b_words, bqint_size b_size)
 {
 	int truncated = 0;
 	bqint_word *long_words, *short_words;
@@ -608,7 +607,7 @@ bqint_size bqint__add_words(
 	}
 
 	// 1. Add the words together for the duration of the short number
-	carry = initial_carry;
+	carry = 0;
 	for (pos = 0; pos < short_size; pos++) {
 		bqint_dword sum
 			= (bqint_dword)short_words[pos]
@@ -715,6 +714,90 @@ bqint_size bqint__mul_words_inplace(
 	}
 }
 
+bqint_size bqint__mul_words(
+		bqint_word *r_words, bqint_size r_size,
+		bqint_word *a_words, bqint_size a_size,
+		bqint_word *b_words, bqint_size b_size)
+{
+
+	int truncated = 0;
+	bqint_word *long_words, *short_words;
+	bqint_size long_size, short_size;
+	bqint_size short_i, r_i;
+	
+	if (r_size == 0 || a_size == 0)
+		return 0;
+
+	// Sort the inputs to short and long
+	if (a_size > b_size) {
+		long_words = a_words;
+		long_size = a_size;
+		short_words = b_words;
+		short_size = b_size;
+	} else {
+		long_words = b_words;
+		long_size = b_size;
+		short_words = a_words;
+		short_size = a_size;
+	}
+
+	// Clear the result words (the product will be accumulated in them)
+	for (r_i = 0; r_i < r_size; r_i++) {
+		r_words[r_i] = 0;
+	}
+
+	// Do the longer one in the inner loop to keep the inner-loop setup overhead
+	// minimal
+	for (short_i = 0; short_i < short_size; short_i++) {
+		bqint_size long_i;
+		bqint_word *r_words_si = r_words + short_i;
+		bqint_word sw = short_words[short_i];
+		bqint_word carry = 0;
+		bqint_size long_cap = r_size - short_i;
+		bqint_size long_num = long_size;
+
+		if (long_num > long_cap) {
+			long_num = long_cap;
+			truncated = 1;
+		}
+
+		for (long_i = 0; long_i < long_size; long_i++) {
+			bqint_dword mul
+				= (bqint_dword)sw
+				* (bqint_dword)long_words[long_i]
+				+ (bqint_dword)r_words_si[long_i]
+				+ (bqint_dword)carry;
+
+			r_words_si[long_i] = BQINT__LO(mul);
+			carry = BQINT__HI(mul);
+		}
+
+		// Continue adding carry as long as it overflows
+		for (; long_i < long_cap && carry; long_i++) {
+			bqint_dword sum
+				= (bqint_dword)r_words_si[long_i]
+				+ (bqint_dword)carry;
+
+			r_words_si[long_i] = BQINT__LO(sum);
+			carry = BQINT__HI(sum);
+		}
+
+		// Ran out of space with carry left, mark as truncated
+		if (carry) {
+			truncated = 1;
+		}
+	}
+
+	if (!truncated) {
+		bqint_size size = r_size;
+		while (size > 0 && !r_words[size - 1])
+			size--;
+		return size;
+	} else {
+		return ~(bqint_size)0;
+	}
+}
+
 void bqint_add_inplace(bqint *result, bqint *a)
 {
 	// TODO: Signs
@@ -725,8 +808,7 @@ void bqint_add_inplace(bqint *result, bqint *a)
 	size = bqint__add_words(
 			res_words, res_size,
 			res_words, result->size,
-			bqint_get_words(a), a->size,
-			0);
+			bqint_get_words(a), a->size);
 
 	// `result` affects the result of the calculation propagate it's error also
 	result->flags |= a->flags & BQINT_ERROR;
@@ -754,8 +836,7 @@ void bqint_add(bqint *result, bqint *a, bqint *b)
 	size = bqint__add_words(
 			res_words, res_size,
 			bqint_get_words(a), a->size,
-			bqint_get_words(b), b->size,
-			0);
+			bqint_get_words(b), b->size);
 
 	// Propagate error flags, note: this overwrites the error of `result` because it's
 	// result doesn't matter at this point anymore
@@ -775,6 +856,35 @@ void bqint_mul_inplace(bqint *result, bqint *a)
 			bqint_get_words(a), a->size);
 
 	result->flags |= a->flags & BQINT_ERROR;
+	bqint__truncate(result, size);
+}
+
+void bqint_mul(bqint *result, bqint *a, bqint *b)
+{
+	// TODO: Signs
+	bqint_size res_size;
+	bqint_word *res_words;
+	bqint_size size;
+
+	if (result == a) {
+		bqint_mul_inplace(result, b);
+		return;
+	} else if (result == b) {
+		bqint_mul_inplace(result, a);
+		return;
+	}
+
+	res_size = a->size + b->size + 1;
+	res_words = bqint__reserve(result, &res_size);
+
+	size = bqint__mul_words(
+			res_words, res_size,
+			bqint_get_words(a), a->size,
+			bqint_get_words(b), b->size);
+
+	// Propagate error flags, note: this overwrites the error of `result` because it's
+	// result doesn't matter at this point anymore
+	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
 	bqint__truncate(result, size);
 }
 

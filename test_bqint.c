@@ -185,12 +185,18 @@ int main(int argc, char **argv)
 		// Test self-operations
 		// - bqint_add
 		// - bqint_add_inplace
+		// - bqint_mul
+		// - bqint_mul_inplace
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			bqint *results = binop_res + ((fixi * num_fixtures) + fixi) * num_binops;
 			bqint sum = { 0 };
 			bqint placesum = { 0 };
+			// bqint mul = { 0 };
+			// bqint placemul = { 0 };
 			bqint_set(&sum, &fixtures[fixi]);
 			bqint_set(&placesum, &fixtures[fixi]);
+			// bqint_set(&mul, &fixtures[fixi]);
+			// bqint_set(&placemul, &fixtures[fixi]);
 
 			bqint_add(&sum, &sum, &sum);
 			test_assert_equal(&sum, &results[0], "Self sum result");
@@ -198,13 +204,25 @@ int main(int argc, char **argv)
 			bqint_add_inplace(&placesum, &placesum);
 			test_assert_equal(&sum, &results[0], "Self in-place sum result");
 
+			// bqint_mul(&mul, &mul, &mul);
+			// test_assert_equal(&mul, &results[1], "Self mul result");
+
+			// bqint_mul_inplace(&placemul, &placemul);
+			// test_assert_equal(&mul, &results[1], "Self in-place mul result");
+
 			bqint_free(&sum);
 			bqint_free(&placesum);
+			// bqint_free(&mul);
+			// bqint_free(&placemul);
+
+			// TODO?: Self multiplication requires temporary memory, is this requried for a good API?
 		}
 
 		// Test binary operations
 		// - bqint_add
 		// - bqint_add_inplace
+		// - bqint_mul
+		// - bqint_mul_inplace
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			for (fixj = 0; fixj < num_fixtures; fixj++) {
 				bqint *results = binop_res + ((fixi * num_fixtures) + fixj) * num_binops;
@@ -212,7 +230,10 @@ int main(int argc, char **argv)
 				bqint placesum = { 0 };
 				bqint asum = { 0 };
 				bqint bsum = { 0 };
+				bqint mul = { 0 };
 				bqint placemul = { 0 };
+				bqint amul = { 0 };
+				bqint bmul = { 0 };
 
 				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
 				test_assert_equal(&sum, &results[0], "Sum result");
@@ -228,15 +249,28 @@ int main(int argc, char **argv)
 				test_assert_equal(&asum, &results[0], "In-place sum result");
 				test_assert_equal(&bsum, &results[0], "In-place sum result");
 
+				bqint_mul(&mul, &fixtures[fixi], &fixtures[fixj]);
+				test_assert_equal(&mul, &results[1], "Mul result");
+
 				bqint_set(&placemul, &fixtures[fixi]);
 				bqint_mul_inplace(&placemul, &fixtures[fixj]);
 				test_assert_equal(&placemul, &results[1], "In-place mul result");
+
+				bqint_set(&amul, &fixtures[fixi]);
+				bqint_set(&bmul, &fixtures[fixj]);
+				bqint_mul(&amul, &amul, &fixtures[fixj]);
+				bqint_mul(&bmul, &fixtures[fixi], &bmul);
+				test_assert_equal(&amul, &results[1], "In-place mul result");
+				test_assert_equal(&bmul, &results[1], "In-place mul result");
 
 				bqint_free(&sum);
 				bqint_free(&placesum);
 				bqint_free(&asum);
 				bqint_free(&bsum);
+				bqint_free(&mul);
 				bqint_free(&placemul);
+				bqint_free(&amul);
+				bqint_free(&bmul);
 			}
 		}
 
