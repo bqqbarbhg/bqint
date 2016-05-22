@@ -69,7 +69,11 @@ const char *cmp_descs[] = {
 
 void test_assert_equal(bqint *val, bqint *ref, const char *name)
 {
-	int cmp = bqint_cmp(val, ref);
+	int cmp;
+
+	test_assert_ok(val, name);
+
+	cmp = bqint_cmp(val, ref);
 	test_assert(cmp == 0, "%s equal to reference (%s)", name, cmp_descs[cmp + 1]);
 }
 
@@ -117,7 +121,7 @@ int main(int argc, char **argv)
 	printf("Running bqint tests...\n");
 	printf("  BQINT_WORD_BITS=%d\n", BQINT_WORD_BITS);
 
-	bqint_set_allocators(bqtest_alloc, bqtest_free);
+	bqint_set_allocators(bqtest_alloc, bqtest_free, 0);
 
 	{
 		FILE *fixture_file = fopen(argv[1], "rb");
@@ -173,22 +177,60 @@ int main(int argc, char **argv)
 			bqint copy = { 0 };
 			bqint_set(&copy, &fixtures[fixi]);
 
-			test_assert_ok(&copy, "Copied value");
 			test_assert_equal(&copy, &fixtures[fixi], "Copied value");
 
 			bqint_free(&copy);
 		}
 
+		// Test self-operations
+		// - bqint_add
+		// - bqint_add_inplace
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			bqint *results = binop_res + ((fixi * num_fixtures) + fixi) * num_binops;
+			bqint sum = { 0 };
+			bqint placesum = { 0 };
+			bqint_set(&sum, &fixtures[fixi]);
+			bqint_set(&placesum, &fixtures[fixi]);
+
+			bqint_add(&sum, &sum, &sum);
+			test_assert_equal(&sum, &results[0], "Self sum result");
+
+			bqint_add_inplace(&placesum, &placesum);
+			test_assert_equal(&sum, &results[0], "Self in-place sum result");
+
+			bqint_free(&sum);
+			bqint_free(&placesum);
+		}
+
+		// Test binary operations
+		// - bqint_add
+		// - bqint_add_inplace
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			for (fixj = 0; fixj < num_fixtures; fixj++) {
 				bqint *results = binop_res + ((fixi * num_fixtures) + fixj) * num_binops;
 				bqint sum = { 0 };
+				bqint placesum = { 0 };
+				bqint asum = { 0 };
+				bqint bsum = { 0 };
 
 				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
-				test_assert_ok(&sum, "Sum result");
 				test_assert_equal(&sum, &results[0], "Sum result");
 
+				bqint_set(&placesum, &fixtures[fixi]);
+				bqint_add_inplace(&placesum, &fixtures[fixj]);
+				test_assert_equal(&placesum, &results[0], "In-place sum result");
+
+				bqint_set(&asum, &fixtures[fixi]);
+				bqint_set(&bsum, &fixtures[fixj]);
+				bqint_add(&asum, &asum, &fixtures[fixj]);
+				bqint_add(&bsum, &fixtures[fixi], &bsum);
+				test_assert_equal(&asum, &results[0], "In-place sum result");
+				test_assert_equal(&bsum, &results[0], "In-place sum result");
+
 				bqint_free(&sum);
+				bqint_free(&placesum);
+				bqint_free(&asum);
+				bqint_free(&bsum);
 			}
 		}
 

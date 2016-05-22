@@ -58,6 +58,7 @@ typedef uint32_t bqint_flags;
 enum
 {
 	BQINT_NEGATIVE = 1 << 0,
+
 	BQINT_STATIC = 1 << 1,
 	BQINT_ALLOCATED = 1 << 2,
 	BQINT_DYNAMIC = 1 << 3,
@@ -66,6 +67,12 @@ enum
 	BQINT_TRUNCATED = 1 << 8,
 	BQINT_OUT_OF_MEMORY = 1 << 9,
 	BQINT_DIV_BY_ZERO = 1 << 11,
+
+	BQINT_STORAGE = 0
+		| BQINT_STATIC
+		| BQINT_ALLOCATED
+		| BQINT_DYNAMIC
+		| BQINT_INLINED,
 
 	BQINT_ERROR = 0
 		| BQINT_TRUNCATED
@@ -130,6 +137,9 @@ void bqint_set_raw(bqint *a, const void *data, size_t size);
 
 // -- Arithmetic
 
+// Add bqints result and a and store the value in result
+void bqint_add_inplace(bqint *result, bqint *a);
+
 // Add bqints a and b and store the value in result
 void bqint_add(bqint *result, bqint *a, bqint *b);
 
@@ -176,10 +186,12 @@ const char *bqint_parse_string(bqint *a, const char *str, int base);
 // -- Allocators
 
 typedef void*(*bqint_alloc_fn)(size_t);
+typedef void*(*bqint_realloc_fn)(void *, size_t copy_size, size_t new_size);
 typedef void(*bqint_free_fn)(void*);
 
 // Set global allocators for bqint functions
-void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn);
+// Note: If realloc_fn is 0, then a default one will be provided using alloc_fn and free_fn
+void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn, bqint_realloc_fn realloc_fn);
 
 #ifdef BQINT_IMPLEMENTATION
 
@@ -201,13 +213,32 @@ void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn);
 #define BQINT__BYTESWAP_WORD(w) (w)
 #endif
 
+static void* bqint__stdlib_realloc(void *memory, size_t copy_size, size_t new_size)
+{
+	return realloc(memory, new_size);
+}
+
 static bqint_alloc_fn bqint_alloc_memory = malloc;
 static bqint_free_fn bqint_free_memory = free;
+static bqint_realloc_fn bqint_realloc_memory = bqint__stdlib_realloc;
 
-void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn)
+static void *bqint__default_user_realloc(void *memory, size_t copy_size, size_t new_size)
+{
+	void *new_mem = bqint_alloc_memory(new_size);
+	if (!new_mem)
+		return 0;
+
+	memcpy(new_mem, memory, new_size < copy_size ? new_size : copy_size);
+	bqint_free_memory(memory);
+
+	return new_mem;
+}
+
+void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn, bqint_realloc_fn realloc_fn)
 {
 	bqint_alloc_memory = alloc_fn;
 	bqint_free_memory = free_fn;
+	bqint_realloc_memory = realloc_fn ? realloc_fn : bqint__default_user_realloc;
 }
 
 static int bqint__is_big_endian()
@@ -288,9 +319,10 @@ static bqint_word *bqint__reserve(bqint *a, bqint_size* size)
 
 	// Dynamically allocated (implicit or explicit)
 #ifdef BQINT_NO_IMPLICIT_DYNAMIC
-	if ((flags & BQINT_DYNAMIC))
+	if (flags & BQINT_DYNAMIC)
 #endif
 	{
+		bqint_word *new_words;
 		bqint_size new_size = a->capacity * 2;
 		new_size = new_size >= sz ? new_size : sz;
 
@@ -298,12 +330,97 @@ static bqint_word *bqint__reserve(bqint *a, bqint_size* size)
 			bqint_free_memory(a->data.words);
 		}
 
-		a->data.words = (bqint_word*)bqint_alloc_memory(sizeof(bqint_word) * new_size);
-		a->capacity = new_size;
+		new_words = (bqint_word*)bqint_alloc_memory(sizeof(bqint_word) * new_size);
+		if (new_words) {
+			a->data.words = new_words;
+			a->capacity = new_size;
 
-		a->flags &= ~BQINT_INLINED;
-		a->flags |= BQINT_ALLOCATED;
+			a->flags &= ~BQINT_INLINED;
+			a->flags |= BQINT_ALLOCATED;
+			return a->data.words;
+		} else {
+			// Out of memory: The old buffer is already freed so just return the
+			// inline buffer below
+			BQINT_ASSERT_FLAG_SET(BQINT_OUT_OF_MEMORY);
+			a->flags |= BQINT_OUT_OF_MEMORY;
+			a->flags &= ~BQINT_ALLOCATED;
+		}
+	}
+
+	// No implicit dynamic, just truncate to inline storage
+	*size = BQINT_INLINE_CAPACITY;
+	a->capacity = BQINT_INLINE_CAPACITY;
+	a->flags |= BQINT_INLINED;
+	return a->data.inline_words;
+}
+
+static bqint_word *bqint__grow(bqint *a, bqint_size* size)
+{
+	bqint_flags flags = a->flags;
+	bqint_size sz = *size;
+
+	// Fits in current storage
+	if (sz <= a->capacity) {
+		if (flags & BQINT_INLINED) {
+			return a->data.inline_words;
+		} else {
+			return a->data.words;
+		}
+	}
+
+	// Statically allocated buffer: Truncate size
+	if (flags & BQINT_STATIC) {
+		// Can't be static and inlined
+		BQINT_ASSERT(!(flags & BQINT_INLINED));
+		*size = a->capacity;
 		return a->data.words;
+	}
+
+	// Fits inline
+	if (sz <= BQINT_INLINE_CAPACITY) {
+		// Note: No need to copy data as this never makes the storage smaller and
+		// static storage is never moved, so if there is any data it's already in
+		// the inline buffer.
+		a->capacity = BQINT_INLINE_CAPACITY;
+		a->flags |= BQINT_INLINED;
+		return a->data.inline_words;
+	}
+
+	// Dynamically allocated (implicit or explicit)
+#ifdef BQINT_NO_IMPLICIT_DYNAMIC
+	if (flags & BQINT_DYNAMIC)
+#endif
+	{
+		bqint_word *new_words;
+		bqint_size new_size = a->capacity * 2;
+		new_size = new_size >= sz ? new_size : sz;
+
+		if (flags & BQINT_ALLOCATED) {
+			new_words = (bqint_word*)bqint_realloc_memory(a->data.words,
+					sizeof(bqint_word) * a->size,
+					sizeof(bqint_word) * new_size);
+		} else {
+			new_words = (bqint_word*)bqint_alloc_memory(sizeof(bqint_word) * new_size);
+			if (new_words) {
+				memcpy(new_words, bqint_get_words(a), sizeof(bqint_word) * a->size);
+			}
+		}
+
+		if (new_words) {
+			a->data.words = new_words;
+			a->capacity = new_size;
+
+			a->flags &= ~BQINT_INLINED;
+			a->flags |= BQINT_ALLOCATED;
+			return new_words;
+		} else {
+			// Failed to grow, truncate to current storage (if any)
+			a->flags |= BQINT_OUT_OF_MEMORY;
+			if (a->capacity > 0) {
+				*size = a->capacity;
+				return bqint_get_words(a);
+			}
+		}
 	}
 
 	// No implicit dynamic, just truncate to inline storage
@@ -526,12 +643,39 @@ bqint_size bqint__add_words(
 	return truncated ? ~(bqint_size)0 : pos;
 }
 
+void bqint_add_inplace(bqint *result, bqint *a)
+{
+	bqint_size res_size = (a->size > result->size ? a->size : result->size) + 1;
+	bqint_word *res_words = bqint__grow(result, &res_size);
+	bqint_size size;
+
+	size = bqint__add_words(
+			res_words, res_size,
+			res_words, result->size,
+			bqint_get_words(a), a->size,
+			0);
+
+	result->flags |= a->flags & BQINT_ERROR;
+	bqint__truncate(result, size);
+}
+
 void bqint_add(bqint *result, bqint *a, bqint *b)
 {
 	// TODO: Signs
-	bqint_size res_size = (a->size > b->size ? a->size : b->size) + 1;
-	bqint_word *res_words = bqint__reserve(result, &res_size);
+	bqint_size res_size;
+	bqint_word *res_words;
 	bqint_size size;
+
+	if (result == a) {
+		bqint_add_inplace(result, b);
+		return;
+	} else if (result == b) {
+		bqint_add_inplace(result, a);
+		return;
+	}
+
+	res_size = (a->size > b->size ? a->size : b->size) + 1;
+	res_words = bqint__reserve(result, &res_size);
 
 	size = bqint__add_words(
 			res_words, res_size,
