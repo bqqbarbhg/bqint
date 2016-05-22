@@ -157,7 +157,7 @@ void bqint_mul_inplace(bqint *result, const bqint *a);
 // result = a * b
 void bqint_mul(bqint *result, const bqint *a, const bqint *b);
 
-// Subtract bqints b from a (a - b) and the value in result
+// Subtract bqints b from a and store the value in result
 // result = a - b
 void bqint_sub(bqint *result, const bqint *a, const bqint *b);
 
