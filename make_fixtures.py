@@ -60,8 +60,9 @@ def bytearray_le(num, minbytes=0):
 	return bytearray(bytes_le(num, minbytes))
 
 def writenum(fl, num):
-	bts = bytearray_le(num)
+	bts = bytearray_le(abs(num))
 	fl.write(bytearray_le(len(bts), 4))
+	fl.write('-+'[num >= 0])
 	fl.write(bts)
 
 if not os.path.exists('bin'):
@@ -76,6 +77,7 @@ with open('bin/fixtures.bin', 'wb') as fl:
 		for b in fixtures:
 			writenum(fl, a + b)
 			writenum(fl, a * b)
+			writenum(fl, a - b)
 
 	for a in fixtures:
 		for b in fixtures:

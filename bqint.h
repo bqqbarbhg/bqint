@@ -66,7 +66,8 @@ enum
 
 	BQINT_TRUNCATED = 1 << 8,
 	BQINT_OUT_OF_MEMORY = 1 << 9,
-	BQINT_DIV_BY_ZERO = 1 << 11,
+	BQINT_DIV_BY_ZERO = 1 << 10,
+	BQINT_PARSE_FAILED = 1 << 11,
 
 	BQINT_STORAGE = 0
 		| BQINT_STATIC
@@ -77,7 +78,8 @@ enum
 	BQINT_ERROR = 0
 		| BQINT_TRUNCATED
 		| BQINT_OUT_OF_MEMORY
-		| BQINT_DIV_BY_ZERO,
+		| BQINT_DIV_BY_ZERO
+		| BQINT_PARSE_FAILED,
 };
 
 // -- Structure
@@ -138,13 +140,24 @@ void bqint_set_raw(bqint *a, const void *data, size_t size);
 // -- Arithmetic
 
 // Add bqints result and a and store the value in result
+// result = result + a
 void bqint_add_inplace(bqint *result, bqint *a);
 
 // Add bqints a and b and store the value in result
+// result = a + b
 void bqint_add(bqint *result, bqint *a, bqint *b);
 
 // Multiply bqints result and a and store the value in result
+// result = result * a
 void bqint_mul_inplace(bqint *result, bqint *a);
+
+// Multiply bqints a and b and store the value in result
+// result = a * b
+void bqint_mul(bqint *result, bqint *a, bqint *b);
+
+// Subtract bqints b from a (a - b) and the value in result
+// result = a - b
+void bqint_sub(bqint *result, bqint *a, bqint *b);
 
 // -- Compares
 
@@ -719,7 +732,6 @@ bqint_size bqint__mul_words(
 		bqint_word *a_words, bqint_size a_size,
 		bqint_word *b_words, bqint_size b_size)
 {
-
 	int truncated = 0;
 	bqint_word *long_words, *short_words;
 	bqint_size long_size, short_size;
@@ -789,6 +801,50 @@ bqint_size bqint__mul_words(
 	}
 
 	if (!truncated) {
+		bqint_size size = r_size;
+		while (size > 0 && !r_words[size - 1])
+			size--;
+		return size;
+	} else {
+		return ~(bqint_size)0;
+	}
+}
+
+bqint_size bqint__sub_words(
+		bqint_word *r_words, bqint_size r_size,
+		bqint_word *a_words, bqint_size a_size,
+		bqint_word *b_words, bqint_size b_size)
+{
+	bqint_size i;
+	bqint_size b_num = b_size;
+	if (b_num > r_size) {
+		b_num = r_size;
+	}
+
+	// Copy the larger number's words into the result to keep the borrow
+	// state in (don't modify the source operand)
+	for (i = 0; i < r_size; i++) {
+		r_words[i] = a_words[i];
+	}
+
+	for (i = 0; i < b_size; i++) {
+		bqint_word aw = r_words[i];
+		bqint_word bw = b_words[i];
+
+		r_words[i] = aw - bw;
+		if (aw < bw) {
+			bqint_size borrow_i;
+			for (borrow_i = i + 1; borrow_i < r_size; borrow_i++) {
+				bqint_word borrow = r_words[borrow_i];
+				r_words[borrow_i] = borrow - 1;
+				if (borrow != 0)
+					break;
+			}
+			BQINT_ASSERT(borrow_i < r_size);
+		}
+	}
+
+	if (r_size >= a_size) {
 		bqint_size size = r_size;
 		while (size > 0 && !r_words[size - 1])
 			size--;
@@ -884,6 +940,37 @@ void bqint_mul(bqint *result, bqint *a, bqint *b)
 
 	// Propagate error flags, note: this overwrites the error of `result` because it's
 	// result doesn't matter at this point anymore
+	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
+	bqint__truncate(result, size);
+}
+
+void bqint_sub(bqint *result, bqint *a, bqint *b)
+{
+	int cmp = bqint_cmp(a, b);
+	bqint_size size = 0;
+
+	if (cmp > 0) {
+		bqint_size res_size = a->size;
+		bqint_word *res_words = bqint__reserve(result, &res_size);
+		size = bqint__sub_words(
+				res_words, res_size,
+				bqint_get_words(a), a->size,
+				bqint_get_words(b), b->size);
+	} else if (cmp < 0) {
+		// A - B = -(A - B)
+		bqint_size res_size = b->size;
+		bqint_word *res_words = bqint__reserve(result, &res_size);
+		size = bqint__sub_words(
+				res_words, res_size,
+				bqint_get_words(b), b->size,
+				bqint_get_words(a), a->size);
+
+		result->flags |= BQINT_NEGATIVE;
+	} else {
+		// A - A = 0
+		bqint_set_zero(result);
+	}
+
 	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
 	bqint__truncate(result, size);
 }

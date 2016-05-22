@@ -22,7 +22,21 @@ uint32_t read_u32(const char **ptr)
 void read_bqint(bqint *val, const char **ptr)
 {
 	uint32_t size = read_u32(ptr);
+	char sign = **ptr; ++*ptr;
 	bqint_set_raw(val, *ptr, size);
+
+	switch (sign) {
+		case '+':
+			// Nop
+			break;
+		case '-':
+			val->flags |= BQINT_NEGATIVE;
+			break;
+		default:
+			val->flags |= BQINT_PARSE_FAILED;
+			break;
+	}
+
 	*ptr += size;
 }
 
@@ -136,7 +150,7 @@ int main(int argc, char **argv)
 	}
 
 	{
-		uint32_t num_binops = 2;
+		uint32_t num_binops = 3;
 		uint32_t fixi, fixj, bini;
 		const char *fixptr = fixture_data;
 		uint32_t num_fixtures = read_u32(&fixptr);
@@ -234,6 +248,7 @@ int main(int argc, char **argv)
 				bqint placemul = { 0 };
 				bqint amul = { 0 };
 				bqint bmul = { 0 };
+				bqint sub = { 0 };
 
 				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
 				test_assert_equal(&sum, &results[0], "Sum result");
@@ -263,6 +278,9 @@ int main(int argc, char **argv)
 				test_assert_equal(&amul, &results[1], "In-place mul result");
 				test_assert_equal(&bmul, &results[1], "In-place mul result");
 
+				bqint_sub(&sub, &fixtures[fixi], &fixtures[fixj]);
+				test_assert_equal(&sub, &results[2], "Sub result");
+
 				bqint_free(&sum);
 				bqint_free(&placesum);
 				bqint_free(&asum);
@@ -271,6 +289,7 @@ int main(int argc, char **argv)
 				bqint_free(&placemul);
 				bqint_free(&amul);
 				bqint_free(&bmul);
+				bqint_free(&sub);
 			}
 		}
 
