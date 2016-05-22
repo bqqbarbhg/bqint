@@ -1,3 +1,5 @@
+#ifndef BQINT__HEADER_INCLUDED
+#define BQINT__HEADER_INCLUDED
 
 // -- Types
 
@@ -120,7 +122,7 @@ void bqint_free(bqint *a);
 // -- Setting values
 
 // Set bqint to the value of another bqint
-void bqint_set(bqint *result, bqint *b);
+void bqint_set(bqint *result, const bqint *b);
 
 // Set bqint to zero
 // Note: Newly initialized values are already zero, so this is rarely needed
@@ -141,52 +143,54 @@ void bqint_set_raw(bqint *a, const void *data, size_t size);
 
 // Add bqints result and a and store the value in result
 // result = result + a
-void bqint_add_inplace(bqint *result, bqint *a);
+void bqint_add_inplace(bqint *result, const bqint *a);
 
 // Add bqints a and b and store the value in result
 // result = a + b
-void bqint_add(bqint *result, bqint *a, bqint *b);
+void bqint_add(bqint *result, const bqint *a, const bqint *b);
 
 // Multiply bqints result and a and store the value in result
 // result = result * a
-void bqint_mul_inplace(bqint *result, bqint *a);
+void bqint_mul_inplace(bqint *result, const bqint *a);
 
 // Multiply bqints a and b and store the value in result
 // result = a * b
-void bqint_mul(bqint *result, bqint *a, bqint *b);
+void bqint_mul(bqint *result, const bqint *a, const bqint *b);
 
 // Subtract bqints b from a (a - b) and the value in result
 // result = a - b
-void bqint_sub(bqint *result, bqint *a, bqint *b);
+void bqint_sub(bqint *result, const bqint *a, const bqint *b);
 
 // -- Compares
 
 // Compare bqints, positive if a > b, negative if a < b, zero if equal
-int bqint_cmp(bqint *a, bqint *b);
+int bqint_cmp(const bqint *a, const bqint *b);
 
 // -- Queries
 
 // Returns a non-zero value if the value is what it's supposed to be represented
 // ie. no error or truncation of the value has happened.
-inline static int bqint_ok(bqint *a)
+inline static int bqint_ok(const bqint *a)
 {
 	return (a->flags & BQINT_ERROR) == 0;
 }
 
 // Get the size of the bqint in words
-static inline size_t bqint_get_size(bqint *a)
+static inline size_t bqint_get_size(const bqint *a)
 {
 	return a->size;
 }
 
 // Returns the raw data of the bqint
 // bqint_get_size() returns the number of words returned
-static inline bqint_word *bqint_get_words(bqint *a)
+// Note: This breaks strict constness!
+// TODO: bqint_get_const_words?
+static inline bqint_word *bqint_get_words(const bqint *a)
 {
 	if (a->flags & BQINT_INLINED) {
-		return a->data.inline_words;
+		return (bqint_word*)a->data.inline_words;
 	} else {
-		return a->data.words;
+		return (bqint_word*)a->data.words;
 	}
 }
 
@@ -209,7 +213,11 @@ typedef void(*bqint_free_fn)(void*);
 // Note: If realloc_fn is 0, then a default one will be provided using alloc_fn and free_fn
 void bqint_set_allocators(bqint_alloc_fn alloc_fn, bqint_free_fn free_fn, bqint_realloc_fn realloc_fn);
 
+#endif
+
 #ifdef BQINT_IMPLEMENTATION
+#ifndef BQINT__IMPLEMENTATION_INCLUDED
+#define BQINT__IMPLEMENTATION_INCLUDED
 
 #include <string.h>
 #include <stdlib.h>
@@ -463,7 +471,7 @@ inline static bqint_flags bqint__combine_flags(bqint_flags result, bqint_flags a
 	return (result & ~mask) | (a & mask);
 }
 
-void bqint_set(bqint *result, bqint *a)
+void bqint_set(bqint *result, const bqint *a)
 {
 	bqint_size size = a->size;
 	bqint_word *a_words = bqint_get_words(a);
@@ -585,11 +593,11 @@ void bqint_set_raw(bqint *a, const void *data, size_t size)
 
 bqint_size bqint__add_words(
 		bqint_word *r_words, bqint_size r_size,
-		bqint_word *a_words, bqint_size a_size,
-		bqint_word *b_words, bqint_size b_size)
+		const bqint_word *a_words, bqint_size a_size,
+		const bqint_word *b_words, bqint_size b_size)
 {
 	int truncated = 0;
-	bqint_word *long_words, *short_words;
+	const bqint_word *long_words, *short_words;
 	bqint_size long_size, short_size;
 	bqint_size pos;
 	bqint_word carry;
@@ -660,7 +668,7 @@ bqint_size bqint__add_words(
 
 bqint_size bqint__mul_words_inplace(
 		bqint_word *r_words, bqint_size r_cap, bqint_size r_size,
-		bqint_word *a_words, bqint_size a_size)
+		const bqint_word *a_words, bqint_size a_size)
 {
 	int truncated = 0;
 	bqint_size r_i;
@@ -729,11 +737,11 @@ bqint_size bqint__mul_words_inplace(
 
 bqint_size bqint__mul_words(
 		bqint_word *r_words, bqint_size r_size,
-		bqint_word *a_words, bqint_size a_size,
-		bqint_word *b_words, bqint_size b_size)
+		const bqint_word *a_words, bqint_size a_size,
+		const bqint_word *b_words, bqint_size b_size)
 {
 	int truncated = 0;
-	bqint_word *long_words, *short_words;
+	const bqint_word *long_words, *short_words;
 	bqint_size long_size, short_size;
 	bqint_size short_i, r_i;
 	
@@ -812,8 +820,8 @@ bqint_size bqint__mul_words(
 
 bqint_size bqint__sub_words(
 		bqint_word *r_words, bqint_size r_size,
-		bqint_word *a_words, bqint_size a_size,
-		bqint_word *b_words, bqint_size b_size)
+		const bqint_word *a_words, bqint_size a_size,
+		const bqint_word *b_words, bqint_size b_size)
 {
 	bqint_size i;
 	bqint_size b_num = b_size;
@@ -854,7 +862,7 @@ bqint_size bqint__sub_words(
 	}
 }
 
-void bqint_add_inplace(bqint *result, bqint *a)
+void bqint_add_inplace(bqint *result, const bqint *a)
 {
 	// TODO: Signs
 	bqint_size res_size = (a->size > result->size ? a->size : result->size) + 1;
@@ -871,7 +879,7 @@ void bqint_add_inplace(bqint *result, bqint *a)
 	bqint__truncate(result, size);
 }
 
-void bqint_add(bqint *result, bqint *a, bqint *b)
+void bqint_add(bqint *result, const bqint *a, const bqint *b)
 {
 	// TODO: Signs
 	bqint_size res_size;
@@ -900,7 +908,7 @@ void bqint_add(bqint *result, bqint *a, bqint *b)
 	bqint__truncate(result, size);
 }
 
-void bqint_mul_inplace(bqint *result, bqint *a)
+void bqint_mul_inplace(bqint *result, const bqint *a)
 {
 	// TODO: Signs
 	bqint_size res_size = result->size + a->size + 1;
@@ -915,7 +923,7 @@ void bqint_mul_inplace(bqint *result, bqint *a)
 	bqint__truncate(result, size);
 }
 
-void bqint_mul(bqint *result, bqint *a, bqint *b)
+void bqint_mul(bqint *result, const bqint *a, const bqint *b)
 {
 	// TODO: Signs
 	bqint_size res_size;
@@ -944,7 +952,7 @@ void bqint_mul(bqint *result, bqint *a, bqint *b)
 	bqint__truncate(result, size);
 }
 
-void bqint_sub(bqint *result, bqint *a, bqint *b)
+void bqint_sub(bqint *result, const bqint *a, const bqint *b)
 {
 	int cmp = bqint_cmp(a, b);
 	bqint_size size = 0;
@@ -975,7 +983,7 @@ void bqint_sub(bqint *result, bqint *a, bqint *b)
 	bqint__truncate(result, size);
 }
 
-int bqint_cmp(bqint *a, bqint *b)
+int bqint_cmp(const bqint *a, const bqint *b)
 {
 	int sign, signdiff;
 	bqint_size i, size;
@@ -1014,4 +1022,5 @@ int bqint_cmp(bqint *a, bqint *b)
 	return 0;
 }
 
+#endif
 #endif
