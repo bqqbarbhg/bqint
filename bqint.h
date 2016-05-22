@@ -62,14 +62,15 @@ enum
 	BQINT_ALLOCATED = 1 << 2,
 	BQINT_DYNAMIC = 1 << 3,
 	BQINT_INLINED = 1 << 4,
-	BQINT_TRUNCATED = 1 << 5,
 
+	BQINT_TRUNCATED = 1 << 8,
 	BQINT_OUT_OF_MEMORY = 1 << 9,
 	BQINT_DIV_BY_ZERO = 1 << 11,
 
 	BQINT_ERROR = 0
+		| BQINT_TRUNCATED
 		| BQINT_OUT_OF_MEMORY
-		| BQINT_DIV_BY_ZERO
+		| BQINT_DIV_BY_ZERO,
 };
 
 // -- Structure
@@ -109,6 +110,9 @@ void bqint_free(bqint *a);
 
 // -- Setting values
 
+// Set bqint to the value of another bqint
+void bqint_set(bqint *result, bqint *b);
+
 // Set bqint to zero
 // Note: Newly initialized values are already zero, so this is rarely needed
 void bqint_set_zero(bqint *a);
@@ -140,7 +144,7 @@ int bqint_cmp(bqint *a, bqint *b);
 // ie. no error or truncation of the value has happened.
 inline static int bqint_ok(bqint *a)
 {
-	return (a->flags & (BQINT_TRUNCATED | BQINT_ERROR)) == 0;
+	return (a->flags & BQINT_ERROR) == 0;
 }
 
 // Get the size of the bqint in words
@@ -319,6 +323,23 @@ inline static void bqint__truncate(bqint *a, bqint_size size)
 		a->flags |= BQINT_TRUNCATED;
 		BQINT_ASSERT_FLAG_SET(BQINT_TRUNCATED);
 	}
+}
+
+inline static bqint_flags bqint__combine_flags(bqint_flags result, bqint_flags a, bqint_flags mask)
+{
+	return (result & ~mask) | (a & mask);
+}
+
+void bqint_set(bqint *result, bqint *a)
+{
+	bqint_size size = a->size;
+	bqint_word *a_words = bqint_get_words(a);
+	bqint_word *words = bqint__reserve(result, &size);
+
+	memcpy(words, a_words, size * sizeof(bqint_word));
+
+	result->flags = bqint__combine_flags(result->flags, a->flags, BQINT_NEGATIVE|BQINT_ERROR);
+	bqint__truncate(result, a->size);
 }
 
 static void bqint__set_raw_u32(bqint *a, uint32_t val)
@@ -518,8 +539,9 @@ void bqint_add(bqint *result, bqint *a, bqint *b)
 			bqint_get_words(b), b->size,
 			0);
 
-	// Propagate error flags
-	result->flags |= (a->flags | b->flags) & BQINT_ERROR;
+	// Propagate error flags, note: this overwrites the error of `result` because it's
+	// result doesn't matter at this point anymore
+	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
 	bqint__truncate(result, size);
 }
 

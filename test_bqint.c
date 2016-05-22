@@ -139,11 +139,13 @@ int main(int argc, char **argv)
 		bqint *fixtures = (bqint*)calloc(sizeof(bqint), num_fixtures);
 		bqint *binop_res = (bqint*)calloc(sizeof(bqint), num_fixtures*num_fixtures*num_binops);
 
+		// Read fixtures
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			read_bqint(&fixtures[fixi], &fixptr);
 			test_assert_ok(&fixtures[fixi], "Fixture");
 		}
 
+		// Read fixture results
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			for (fixj = 0; fixj < num_fixtures; fixj++) {
 				for (bini = 0; bini < num_binops; bini++) {
@@ -154,6 +156,8 @@ int main(int argc, char **argv)
 			}
 		}
 
+		// Test comparison
+		// - bqint_cmp
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			for (fixj = 0; fixj < num_fixtures; fixj++) {
 				char c = *fixptr++;
@@ -161,6 +165,18 @@ int main(int argc, char **argv)
 				int cmp = bqint_cmp(&fixtures[fixi], &fixtures[fixj]);
 				test_assert(cmp == cmpref, "bqint_cmp(%u, %u)", fixi, fixj);
 			}
+		}
+
+		// Test moving values
+		// - bqint_set
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			bqint copy = { 0 };
+			bqint_set(&copy, &fixtures[fixi]);
+
+			test_assert_ok(&copy, "Copied value");
+			test_assert_equal(&copy, &fixtures[fixi], "Copied value");
+
+			bqint_free(&copy);
 		}
 
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
