@@ -212,6 +212,7 @@ int main(int argc, char **argv)
 				bqint placesum = { 0 };
 				bqint asum = { 0 };
 				bqint bsum = { 0 };
+				bqint placemul = { 0 };
 
 				bqint_add(&sum, &fixtures[fixi], &fixtures[fixj]);
 				test_assert_equal(&sum, &results[0], "Sum result");
@@ -227,10 +228,15 @@ int main(int argc, char **argv)
 				test_assert_equal(&asum, &results[0], "In-place sum result");
 				test_assert_equal(&bsum, &results[0], "In-place sum result");
 
+				bqint_set(&placemul, &fixtures[fixi]);
+				bqint_mul_inplace(&placemul, &fixtures[fixj]);
+				test_assert_equal(&placemul, &results[1], "In-place mul result");
+
 				bqint_free(&sum);
 				bqint_free(&placesum);
 				bqint_free(&asum);
 				bqint_free(&bsum);
+				bqint_free(&placemul);
 			}
 		}
 

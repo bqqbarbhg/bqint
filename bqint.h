@@ -143,6 +143,9 @@ void bqint_add_inplace(bqint *result, bqint *a);
 // Add bqints a and b and store the value in result
 void bqint_add(bqint *result, bqint *a, bqint *b);
 
+// Multiply bqints result and a and store the value in result
+void bqint_mul_inplace(bqint *result, bqint *a);
+
 // -- Compares
 
 // Compare bqints, positive if a > b, negative if a < b, zero if equal
@@ -643,8 +646,78 @@ bqint_size bqint__add_words(
 	return truncated ? ~(bqint_size)0 : pos;
 }
 
+bqint_size bqint__mul_words_inplace(
+		bqint_word *r_words, bqint_size r_cap, bqint_size r_size,
+		bqint_word *a_words, bqint_size a_size)
+{
+	int truncated = 0;
+	bqint_size r_i;
+
+	if (r_size == 0 || a_size == 0)
+		return 0;
+
+	// Clear the high words
+	for (r_i = r_size; r_i < r_cap; r_i++) {
+		r_words[r_i] = 0;
+	}
+
+	// Iterate the result words backwards to avoid overwriting the ones that
+	// are not multiplied yet
+	for (r_i = r_size - 1; r_i < r_size; r_i--) {
+		bqint_size a_i;
+		bqint_word *r_words_ri = r_words + r_i;
+		bqint_word rw = *r_words_ri;
+		bqint_word carry = 0;
+		bqint_size a_cap = r_cap - r_i;
+		bqint_size a_num = a_size;
+
+		*r_words_ri = 0;
+
+		if (a_num > a_cap) {
+			a_num = a_cap;
+			truncated = 1;
+		}
+
+		for (a_i = 0; a_i < a_num; a_i++) {
+			bqint_dword mul
+				= (bqint_dword)rw
+				* (bqint_dword)a_words[a_i]
+				+ (bqint_dword)r_words_ri[a_i]
+				+ (bqint_dword)carry;
+
+			r_words_ri[a_i] = BQINT__LO(mul);
+			carry = BQINT__HI(mul);
+		}
+
+		// Continue adding carry as long as it overflows
+		for (; a_i < a_cap && carry; a_i++) {
+			bqint_dword sum
+				= (bqint_dword)r_words_ri[a_i]
+				+ (bqint_dword)carry;
+
+			r_words_ri[a_i] = BQINT__LO(sum);
+			carry = BQINT__HI(sum);
+		}
+
+		// Ran out of space with carry left, mark as truncated
+		if (carry) {
+			truncated = 1;
+		}
+	}
+
+	if (!truncated) {
+		bqint_size size = r_cap;
+		while (size > 0 && !r_words[size - 1])
+			size--;
+		return size;
+	} else {
+		return ~(bqint_size)0;
+	}
+}
+
 void bqint_add_inplace(bqint *result, bqint *a)
 {
+	// TODO: Signs
 	bqint_size res_size = (a->size > result->size ? a->size : result->size) + 1;
 	bqint_word *res_words = bqint__grow(result, &res_size);
 	bqint_size size;
@@ -655,6 +728,7 @@ void bqint_add_inplace(bqint *result, bqint *a)
 			bqint_get_words(a), a->size,
 			0);
 
+	// `result` affects the result of the calculation propagate it's error also
 	result->flags |= a->flags & BQINT_ERROR;
 	bqint__truncate(result, size);
 }
@@ -686,6 +760,21 @@ void bqint_add(bqint *result, bqint *a, bqint *b)
 	// Propagate error flags, note: this overwrites the error of `result` because it's
 	// result doesn't matter at this point anymore
 	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
+	bqint__truncate(result, size);
+}
+
+void bqint_mul_inplace(bqint *result, bqint *a)
+{
+	// TODO: Signs
+	bqint_size res_size = result->size + a->size + 1;
+	bqint_word *res_words = bqint__grow(result, &res_size);
+	bqint_size size;
+
+	size = bqint__mul_words_inplace(
+			res_words, res_size, result->size,
+			bqint_get_words(a), a->size);
+
+	result->flags |= a->flags & BQINT_ERROR;
 	bqint__truncate(result, size);
 }
 
