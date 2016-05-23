@@ -161,6 +161,10 @@ void bqint_mul(bqint *result, const bqint *a, const bqint *b);
 // result = a - b
 void bqint_sub(bqint *result, const bqint *a, const bqint *b);
 
+// Shift the bits of result right and store the value in result
+// result = result >> shift
+void bqint_shr_inplace(bqint *result, bqint_size shift);
+
 // -- Compares
 
 // Compare bqints, positive if a > b, negative if a < b, zero if equal
@@ -862,6 +866,42 @@ bqint_size bqint__sub_words(
 	}
 }
 
+bqint_size bqint__shr_words_inplace(
+		bqint_word *r_words, bqint_size r_size,
+		bqint_size shift)
+{
+	bqint_size word_shift = shift / BQINT_WORD_BITS;
+	bqint_size bit_shift = shift % BQINT_WORD_BITS;
+	bqint_size i;
+
+	if (word_shift >= r_size)
+		return 0;
+
+	if (bit_shift) {
+		bqint_size bit_shift_hi = BQINT_WORD_BITS - bit_shift;
+		bqint_word prev_word = r_words[word_shift];
+		for (i = 0; i + word_shift + 1 < r_size; i++) {
+			bqint_word next_word = r_words[i + word_shift + 1];
+			r_words[i] = prev_word >> bit_shift | next_word << bit_shift_hi;
+			prev_word = next_word;
+		}
+		r_words[i] = prev_word >> bit_shift;
+		i++;
+
+		while (i > 0 && !r_words[i - 1])
+			i--;
+		return i;
+	} else {
+		if (word_shift == 0)
+			return r_size;
+
+		for (i = 0; i + word_shift < r_size; i++) {
+			r_words[i] = r_words[i + word_shift];
+		}
+		return i;
+	}
+}
+
 void bqint_add_inplace(bqint *result, const bqint *a)
 {
 	// TODO: Signs
@@ -980,6 +1020,12 @@ void bqint_sub(bqint *result, const bqint *a, const bqint *b)
 	}
 
 	result->flags = bqint__combine_flags(result->flags, a->flags | b->flags, BQINT_ERROR);
+	bqint__truncate(result, size);
+}
+
+void bqint_shr_inplace(bqint *result, bqint_size shift)
+{
+	bqint_size size = bqint__shr_words_inplace(bqint_get_words(result), result->size, shift);
 	bqint__truncate(result, size);
 }
 

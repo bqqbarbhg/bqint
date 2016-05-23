@@ -9,12 +9,12 @@
 
 uint32_t read_u32(const char **ptr)
 {
-	const char *p = *ptr;
+	const unsigned char *p = (const unsigned char*)*ptr;
 	uint32_t val = 0;
-	val |= p[0];
-	val |= p[1] << 8;
-	val |= p[2] << 16;
-	val |= p[3] << 24;
+	val |= (uint32_t)p[0];
+	val |= (uint32_t)p[1] << 8;
+	val |= (uint32_t)p[2] << 16;
+	val |= (uint32_t)p[3] << 24;
 	*ptr += 4;
 	return val;
 }
@@ -151,16 +151,25 @@ int main(int argc, char **argv)
 
 	{
 		uint32_t num_binops = 3;
+		uint32_t num_small_binops = 1;
 		uint32_t fixi, fixj, bini;
 		const char *fixptr = fixture_data;
 		uint32_t num_fixtures = read_u32(&fixptr);
+		uint32_t num_small_fixtures = read_u32(&fixptr);
 		bqint *fixtures = (bqint*)calloc(sizeof(bqint), num_fixtures);
+		uint32_t *small_fixtures = (uint32_t*)calloc(sizeof(uint32_t), num_small_fixtures);
 		bqint *binop_res = (bqint*)calloc(sizeof(bqint), num_fixtures*num_fixtures*num_binops);
+		bqint *small_binop_res = (bqint*)calloc(sizeof(bqint), num_fixtures*num_small_fixtures*num_small_binops);
 
 		// Read fixtures
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			read_bqint(&fixtures[fixi], &fixptr);
 			test_assert_ok(&fixtures[fixi], "Fixture");
+		}
+
+		// Read small fixtures
+		for (fixi = 0; fixi < num_small_fixtures; fixi++) {
+			small_fixtures[fixi] = read_u32(&fixptr);
 		}
 
 		// Read fixture results
@@ -170,6 +179,17 @@ int main(int argc, char **argv)
 					size_t index = ((fixi * num_fixtures) + fixj) * num_binops + bini;
 					read_bqint(&binop_res[index], &fixptr);
 					test_assert_ok(&binop_res[index], "Fixture operation result");
+				}
+			}
+		}
+
+		// Read small fixture results
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			for (fixj = 0; fixj < num_small_fixtures; fixj++) {
+				for (bini = 0; bini < num_small_binops; bini++) {
+					size_t index = ((fixi * num_small_fixtures) + fixj) * num_small_binops + bini;
+					read_bqint(&small_binop_res[index], &fixptr);
+					test_assert_ok(&small_binop_res[index], "Small fixture operation result");
 				}
 			}
 		}
@@ -293,12 +313,31 @@ int main(int argc, char **argv)
 			}
 		}
 
+		// Test small binary operations
+		// - bqint_shr_inplace
+		for (fixi = 0; fixi < num_fixtures; fixi++) {
+			for (fixj = 0; fixj < num_small_fixtures; fixj++) {
+				bqint *results = small_binop_res + ((fixi * num_small_fixtures) + fixj) * num_small_binops;
+
+				bqint placeshr = { 0 };
+				bqint_set(&placeshr, &fixtures[fixi]);
+				bqint_shr_inplace(&placeshr, small_fixtures[fixj]);
+				test_assert_equal(&placeshr, &results[0], "In-place shr result");
+
+				bqint_free(&placeshr);
+			}
+		}
+
 		for (fixi = 0; fixi < num_fixtures; fixi++) {
 			bqint_free(&fixtures[fixi]);
 		}
 
 		for (fixi = 0; fixi < num_fixtures*num_fixtures*num_binops; fixi++) {
 			bqint_free(&binop_res[fixi]);
+		}
+
+		for (fixi = 0; fixi < num_fixtures*num_small_fixtures*num_small_binops; fixi++) {
+			bqint_free(&small_binop_res[fixi]);
 		}
 	}
 

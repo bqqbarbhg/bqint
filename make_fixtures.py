@@ -50,6 +50,30 @@ fixtures = [
 	0x0000000000000080000000000000008000000000000000800000000000000080,
 ]
 
+small_fixtures = [
+	0,
+	1,
+	2,
+	3,
+	4,
+	5,
+	6,
+	7,
+	8,
+	9,
+	10,
+
+	2 ** 7 - 1,
+	2 ** 7,
+	2 ** 8 - 1,
+	2 ** 8,
+	2 ** 15 - 1,
+	2 ** 15,
+	2 ** 16 - 1,
+	2 ** 16,
+	2 ** 31 - 1,
+]
+
 def bytes_le(num, minbytes=0):
 	while num or minbytes > 0:
 		yield num & 0xFF
@@ -59,9 +83,12 @@ def bytes_le(num, minbytes=0):
 def bytearray_le(num, minbytes=0):
 	return bytearray(bytes_le(num, minbytes))
 
+def write32(fl, num):
+	fl.write(bytearray_le(num, 4))
+
 def writenum(fl, num):
 	bts = bytearray_le(abs(num))
-	fl.write(bytearray_le(len(bts), 4))
+	write32(fl, len(bts))
 	fl.write('-+'[num >= 0])
 	fl.write(bts)
 
@@ -69,15 +96,24 @@ if not os.path.exists('bin'):
 	os.mkdir('bin')
 
 with open('bin/fixtures.bin', 'wb') as fl:
-	fl.write(bytearray_le(len(fixtures), 4))
+	write32(fl, len(fixtures))
+	write32(fl, len(small_fixtures))
+
 	for f in fixtures:
 		writenum(fl, f)
+
+	for f in small_fixtures:
+		write32(fl, f)
 
 	for a in fixtures:
 		for b in fixtures:
 			writenum(fl, a + b)
 			writenum(fl, a * b)
 			writenum(fl, a - b)
+
+	for a in fixtures:
+		for b in small_fixtures:
+			writenum(fl, a >> b)
 
 	for a in fixtures:
 		for b in fixtures:
